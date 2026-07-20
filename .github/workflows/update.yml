@@ -1,0 +1,71 @@
+name: update-dashboard
+
+on:
+  schedule:
+    - cron: "0 5 * * *"      # 05:00 UTC = 08:00 МСК, ежедневно
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-dashboard
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore months cache
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: dashboard-cache-${{ github.run_id }}
+          restore-keys: |
+            dashboard-cache-
+
+      - name: Install deps
+        run: pip install requests pyyaml
+
+      - name: Write configs from secrets
+        env:
+          WB_CONFIG: ${{ secrets.WB_CONFIG }}
+          OZON_CONFIG: ${{ secrets.OZON_CONFIG }}
+        run: |
+          printf '%s' "$WB_CONFIG" > wb_config.yaml
+          printf '%s' "$OZON_CONFIG" > ozon_config.yaml
+
+      - name: Build dashboard (fetch WB + Ozon)
+        env:
+          WB_CONFIG_PATH: wb_config.yaml
+          OZON_CONFIG_PATH: ozon_config.yaml
+        run: python build_dashboard.py
+
+      - name: Encrypt page with password
+        env:
+          STATICRYPT_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          mkdir -p site
+          npx --yes staticrypt output/dashboard.html -d site --short \
+            --remember 30 \
+            --salt 16d81c27459bf0f8ced1b1340eed6a66 \
+            --template-title "PastiLab Dashboard" \
+            --template-instructions "Финансовый дашборд PastiLab. Введите пароль доступа." \
+            --template-button "Открыть"
+          mv site/dashboard.html site/index.html
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./site
+          allow_empty_commit: true
+          commit_message: "dashboard update"

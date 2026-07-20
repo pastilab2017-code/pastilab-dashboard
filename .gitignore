@@ -1,0 +1,9 @@
+# токены — только в GitHub Secrets
+wb_config.yaml
+ozon_config.yaml
+config.yaml
+# финансовые данные в git не попадают: кэш живёт в GitHub Actions cache
+cache/
+output/
+site/
+__pycache__/
